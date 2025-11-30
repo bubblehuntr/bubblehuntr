@@ -2,11 +2,11 @@ name: Generate Snake
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 * * *"    # 每天 00:00 运行（UTC）
   push:
     branches:
-      - master
-  workflow_dispatch:
+      - master             # 推送到 master 时也跑
+  workflow_dispatch:        # 手动触发
 
 concurrency:
   group: snake-${{ github.ref }}
@@ -14,17 +14,17 @@ concurrency:
 
 jobs:
   generate:
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write      # 允许推送代码
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: true  # 用默认 GITHUB_TOKEN 推送
+          persist-credentials: true   # 使用默认 GITHUB_TOKEN 推送
 
       - name: Generate github-contribution-grid-snake.svg
         uses: Platane/snk/svg-only@v3
@@ -34,39 +34,27 @@ jobs:
             dist/github-contribution-grid-snake.svg
             dist/github-contribution-grid-snake-dark.svg?palette=github-dark
 
-      - name: Commit & push to output (no extra secrets)
+      - name: Commit & push SVGs to default branch
         shell: bash
         env:
           ACTOR: ${{ github.actor }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          # 以触发者身份作为 author（不需要 GH_EMAIL/USERNAME/PAT）
+          # 用触发者作为提交作者
           git config user.name  "${ACTOR}"
           git config user.email "${ACTOR}@users.noreply.github.com"
 
-          # 准备 output 分支工作区
-          git fetch origin output || true
-          rm -rf output-branch
-          if git ls-remote --exit-code --heads origin output >/dev/null 2>&1; then
-            git worktree add output-branch origin/output
-          else
-            git worktree add -b output output-branch
-          fi
+          # 把生成的文件放到仓库中你想跟踪的位置（这里示例放在 .github/snake/）
+          mkdir -p .github/snake
+          cp -f dist/github-contribution-grid-snake.svg .github/snake/github-contribution-grid-snake.svg
+          cp -f dist/github-contribution-grid-snake-dark.svg .github/snake/github-contribution-grid-snake-dark.svg
 
-          # 拷贝生成物
-          mkdir -p output-branch
-          cp -f dist/*.svg output-branch/ || true
-
-          cd output-branch
-
-          # 仅在有变更时提交
+          # 只有有变更才提交
           if [[ -n "$(git status --porcelain)" ]]; then
-            git add -A
-            git commit -m "chore: update snake SVGs [skip ci]"
-            # 使用 actions/checkout 配置好的 origin（已带 GITHUB_TOKEN）推送
-            git push origin HEAD:output
+            git add .github/snake/github-contribution-grid-snake.svg .github/snake/github-contribution-grid-snake-dark.svg
+            git commit -m "chore: update snake SVGs"
+            git push origin HEAD
           else
             echo "No changes to commit."
           fi
